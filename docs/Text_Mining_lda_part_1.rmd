@@ -32,7 +32,7 @@ ap_lda <- LDA(AssociatedPress, k = 2, control = list(seed = 1234))
 ap_lda 
 ```
 
-La mise au format tidy du modèle par la fonction tidy() de **tidytext** permet d'obtenir facilement les probabilités par thème que chacun des mots en soit issu, notées 𝛽, via l'argument matrix="beta". Celles-ci sont très basses pour de nombreux mots. La fonction top_n() de dplyr permet de trouver les 10 mots les plus communs à chaque thème et d'en faire le barplot via **ggplot2**. 
+La mise au format tidy du modèle par la fonction tidy() de **tidytext** permet d'obtenir facilement les probabilités par thème que chacun des mots en soit issu, notées 𝛽, via l'argument matrix="beta" (probabilité de trouver ce terme sachant le topic 1 et probabilité de trouver ce terme sachant le topic 2). Celles-ci sont très basses pour de nombreux mots. La fonction top_n() de dplyr permet de trouver les 10 mots les plus communs à chaque thème et d'en faire le barplot via **ggplot2**. 
 
 ```{r}
 # Obtention des probabilités "par mot et par thème", notées "beta" 
@@ -68,7 +68,7 @@ Le rapide parcours de ces deux listes de mots laissent à penser que le premier 
 
 ## Différences entre les thèmes
 
-Il est possible de rechercher les plus grandes différences en termes de 𝛽 entre les deux thèmes. Elles sont estimées sur la base du rapport des log des probabilités d'appartenir à l'un ou l'autre thème log(𝛽1 / 𝛽2), pratique car rendant les différences symétriques entre thèmes. 
+Il est possible de rechercher les plus grandes différences en termes de 𝛽 entre les deux thèmes. Elles sont estimées sur la base du rapport des log des probabilités d'appartenir à l'un ou l'autre thème log(𝛽1 / 𝛽2), pratique car rendant les différences symétriques entre thèmes (rapport des probabilités de trouver un mot sachant les topics 1 et 2). 
 
 ```{r}
 # Tableau 
@@ -116,7 +116,7 @@ Le document 6 a une proportion très faible de mots issus du thème 1, on peut p
 
 ```{r}
 validation <- tidy(AssociatedPress) %>% 
-  filter(document == 6 | document==7) %>% 
+  # filter(document == 6 | document==7) %>% 
   group_by(document) %>% 
   arrange(desc(count)) %>% 
   ungroup() 
