@@ -23,7 +23,7 @@ library(caret)
 library(randomForest)
 ```
 
-Le modèle est créé par la fonction LDA() de **topicmodels**. L'argument k = 2 signifie qu'un modèle à 2 thèmes seulement est créé, mais ceci s'étend à un nombre plus important en pratique. Une graine de nombres aléatoires, via l\'argument seed, est fournie pour permettre d'avoir des résultats répétables. 
+Le modèle est créé par la fonction LDA() de **topicmodels**. L'argument k = 2 signifie qu'un modèle à 2 thèmes seulement est créé, mais ceci s'étend à un nombre plus important en pratique. Une graine de nombres aléatoires, via l'argument seed, est fournie pour permettre d'avoir des résultats répétables. 
 
 ```{r}
 # Ajustement du modèle 
