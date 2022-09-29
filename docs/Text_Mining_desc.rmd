@@ -278,6 +278,8 @@ Exercice : Trier le tableau par valeur de TF-IDF
 
 ```{r}
 # Complete code here
+book_tf_idf <- book_tf_idf |> 
+  arrange(desc(tf_idf))
 ```
 
 Recalculons les graphiques
@@ -316,7 +318,8 @@ physics
 Exercice: Tokeniser ce corpus documentaire
 
 ```{r}
-# physics_words <- 
+physics_words <- physics |> 
+  unnest_tokens(word, text)
 ```
 
 #### Application du filtrage TF-IDF
@@ -324,17 +327,24 @@ Exercice: Tokeniser ce corpus documentaire
 Exercice : Construire le tableau resultat trié par valeur de TF-IDF
 
 ```{r}
-# physics_words <- 
+physics_words <- physics_words |> 
+  count(author, word, sort = TRUE) |> 
+  bind_tf_idf(word, author, n) |> 
+  arrange(desc(tf_idf))
 ```
 
 #### Visualisation avec GGPLOT
 
 ```{r}
-physics_words %>%
-  ggplot(aes(tf_idf, word, fill = author)) + 
-  geom_col(show.legend = FALSE) + 
-  labs(x = "tf-idf", y = NULL) + 
-  facet_wrap(~author, ncol = 2, scales = "free") 
+physics_words |>
+  group_by(author) |>
+  slice_max(tf_idf, n = 15) |> 
+  ungroup() |>
+  mutate(word = fct_rev(fct_inorder(word))) |> 
+  ggplot(aes(tf_idf, word, fill = author)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = "tf-idf", y = NULL) +
+  facet_wrap(~author, ncol = 2, scales = "free")
 ```
 
 Des termes surprenants apparaissent, comme ab, rc\... pour Huygens, correspondant à des noms d'angles, rayons, cercles\... k chez Einstein, la séparation de co et ordinate car séparés par un caractère de ponctuation\... un nettoyage complémentaire peut donc être nécessaire pour clarifier l'interprétation. 
@@ -345,10 +355,12 @@ Exercice : Ajoutons manuellement de stop words et supprimons les.
 
 ```{r}
 # tibble de stopwords complémentaires  
-# mystopwords <- 
+mystopwords <- tibble(
+  word = c("_k_", "_k", "_x", "ab", "ac", "rc", "cm", "cg", "cb", "ak"))
   
 # Suppression de ces mots 
-# physics_words <- 
+physics_words <- physics_words |> 
+  anti_join(mystopwords)
 ```
 
 #### Nouvelle visualisation avec GGPLOT

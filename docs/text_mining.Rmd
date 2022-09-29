@@ -50,3 +50,6 @@ En text mining, plutôt un format matriciel "document-term"
 
 # Analyse descriptive
 
+TF-IDF = Term Frequency Inter-Document Frequency
+
+Pondérer les fréquences de mots
