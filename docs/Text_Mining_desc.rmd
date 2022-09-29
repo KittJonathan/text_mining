@@ -1,3 +1,9 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
 # Préparation de données
 
 ```{r}
@@ -35,7 +41,8 @@ text
 
 ```{r}
 # Passage en tibble 
-text_df <- tibble(line = 1:3, text = text) 
+text_df <- tibble(line = 1:3,
+                  text = text) 
 text_df 
 ```
 
@@ -57,7 +64,8 @@ head(stop_words_french)
 ```
 
 ```{r}
-stop_words_french <- tibble(mot=stop_words_french, lexicon="pack_tm")
+stop_words_french <- tibble(mot = stop_words_french,
+                            lexicon = "pack_tm")
 stop_words_french
 ```
 
@@ -83,7 +91,7 @@ text_tidy
 
 ```{r}
 new_dict <- dictionary(lang = "fr_FR", add_words = c("inra", "europe"))
-
+# Global options > Spelling > Main Dictionary Langage > Install more langages
 # Trouvons les lemmes pour chaque entrée
 lemm_list <- hunspell_stem(text_tidy$mot, dict = new_dict)
 tibble(lemm_list)
@@ -133,6 +141,7 @@ chapters
 ```
 
 ```{r}
+# changement de chapitre -> +1
 chapters <- cumsum(chapters)
 chapters
 ```
@@ -161,6 +170,14 @@ original_books %>% filter(book=="Persuasion")
 
 Exercice : Appliquer la tokenisation a cet ensemble de livre et observer les lignes du resultat contenant le mot "miss"
 
+```{r}
+tidy_books <- original_books |> 
+  unnest_tokens(word, text)
+
+tidy_books |> 
+  filter(word == "miss")
+```
+
 ## Suppression des stop words
 
 Excercice : completer le code ci dessous pour supprimer les stop words. Afficher le resultat.
@@ -170,6 +187,10 @@ Excercice : completer le code ci dessous pour supprimer les stop words. Afficher
 data(stop_words) 
  
 # Completer ici
+# Liste des mots à supprimer 
+tidy_books <- tidy_books |>  
+  anti_join(stop_words)
+tidy_books
 ```
 
 ## Calcule des fréquences
@@ -178,7 +199,9 @@ Exercice : Produisez une colonne supplémentaire contenant le nombre d'occurence
 
 ```{r}
 # Etape 4: calcul des fréquences 
-
+tidy_books_count <- tidy_books |> 
+  count(word, sort = TRUE)
+tidy_books_count
 ```
 
 ## Visualisation d'un nuage de mots
@@ -186,17 +209,25 @@ Exercice : Produisez une colonne supplémentaire contenant le nombre d'occurence
 ```{r}
 # Etape 5: Visualisation des mots à >600 occurences 
 # --- Graphe en barres 
-janeausten_freq %>% 
-  filter(n > 600) %>% 
-  # mutate(word = reorder(word, n)) %>% 
-  ggplot(aes(n, word)) + 
+tidy_books_count |> 
+  filter(n > 600) |> 
+  mutate(word = fct_rev(fct_inorder(word))) |> 
+  ggplot(aes(n, word)) +
   geom_col()
+
+# janeausten_freq %>% 
+#   filter(n > 600) %>% 
+#   mutate(word = reorder(word, n)) %>% 
+#   ggplot(aes(n, word)) + 
+#   geom_col()
 ```
 
 ```{r}
 # --- Nuage de mots 
-janeausten_freq %>% 
-  with(wordcloud(word, n, max.words = 100)) 
+tidy_books_count |> 
+  with(wordcloud(word, n, max.words = 100))
+# janeausten_freq %>% 
+#   with(wordcloud(word, n, max.words = 100)) 
 ```
 
 ## Filtrage par TF-IDF
