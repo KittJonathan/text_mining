@@ -1,0 +1,347 @@
+# Préparation de données
+
+```{r}
+# Librairies 
+library(tidytext) 
+library(tidyverse)
+# package de manipulation des chaînes de caractères du tidyverse 
+library(stringr)  
+# package graphique devenu la référence sous R 
+library(ggplot2)  
+# package populaire d'algorithmes de text mining 
+library(tm)  
+library(hunspell) # contient des fonctions de parsing, tokenization, lemmatisation... 
+library(janeaustenr) # 6 romans de Jane Austen 
+library(wordcloud) # pour les nuages de mots 
+
+library(forcats) # pour le graphe des tf-idf par valeur décroissante 
+
+library(gutenbergr) # accès à du contenu textuel 
+
+library(topicmodels) # modélisation de thématiq#ues
+library(caret)
+library(randomForest)
+```
+
+## Données d'entrée
+
+```{r}
+text <- c("Premier institut de recherche agronomique en Europe et
+deuxième dans le monde en nombre de publications.", "Les travaux s'appliquent en sciences agricoles 
+et en sciences de la plante et de l'animal.","L'INRA déclare mener des recherches finalisées pour 
+une alimentation saine et de qualité, pour une agriculture durable, et pour un environnement préservé et valorisé.")
+text
+```
+
+```{r}
+# Passage en tibble 
+text_df <- tibble(line = 1:3, text = text) 
+text_df 
+```
+
+## Tokenisation
+
+```{r}
+# Tokenization 
+text_tidy <- text_df %>% 
+  unnest_tokens(mot, text) 
+text_tidy 
+```
+
+## Débruitage par suppression des "stop words"
+
+```{r}
+# Liste des mots à supprimer 
+stop_words_french <- stopwords('french') 
+head(stop_words_french) 
+```
+
+```{r}
+stop_words_french <- tibble(mot=stop_words_french, lexicon="pack_tm")
+stop_words_french
+```
+
+```{r}
+# Elimination de ces mots de nos données 
+text_tidy <- text_tidy %>% 
+  anti_join(stop_words_french)
+
+text_tidy
+```
+
+##### Suppression des "l'" et "s'"
+
+```{r}
+# Suppression des "l'" et "s'" 
+text_tidy <- text_tidy %>% 
+  mutate(mot = gsub("l'","",mot),  
+         mot = gsub("s'","",mot))
+text_tidy
+```
+
+## Lemmatisation
+
+```{r}
+new_dict <- dictionary(lang = "fr_FR", add_words = c("inra", "europe"))
+
+# Trouvons les lemmes pour chaque entrée
+lemm_list <- hunspell_stem(text_tidy$mot, dict = new_dict)
+tibble(lemm_list)
+```
+
+```{r}
+# Ne gardons pour chaque entrée que le premier lemme
+lemm_list <- sapply(lemm_list, function(x){x[[1]]})
+tibble(lemm_list)
+```
+
+```{r}
+# lemmatisation
+text_tidy <- text_tidy %>% mutate(mot_lem=lemm_list) 
+text_tidy
+```
+
+# Analyse descriptive
+
+## Effectuons un comptage simple
+
+```{r}
+text_tidy_count <- text_tidy %>% count(mot_lem, sort=T) 
+text_tidy_count
+```
+
+## Application à une collection de livres
+
+```{r}
+# Etape 1: données d'origine 
+original_books <- austen_books()
+original_books
+```
+
+## Péparation des données
+
+```{r}
+original_books <- original_books %>%  group_by(book) 
+original_books
+```
+
+```{r}
+chapters <- str_detect(original_books$text,  
+                                     regex("^chapter [\\divxlc]", 
+                                           ignore_case = TRUE))
+chapters
+```
+
+```{r}
+chapters <- cumsum(chapters)
+chapters
+```
+
+```{r}
+# On applique tout ensemble
+```
+
+```{r}
+original_books <- austen_books() %>%
+  group_by(book) %>% 
+  mutate(linenumber = row_number(), 
+         chapter = cumsum(str_detect(text,  
+                                     regex("^chapter [\\divxlc]", 
+                                           ignore_case = TRUE)))) %>% 
+  ungroup()
+original_books
+```
+
+```{r}
+# Ne récuppérons que le livre Persuasion
+original_books %>% filter(book=="Persuasion")
+```
+
+## Tokenisation
+
+Exercice : Appliquer la tokenisation a cet ensemble de livre et observer les lignes du resultat contenant le mot "miss"
+
+## Suppression des stop words
+
+Excercice : completer le code ci dessous pour supprimer les stop words. Afficher le resultat.
+
+```{r}
+# Etape 3: suppression des stopwords 
+data(stop_words) 
+ 
+# Completer ici
+```
+
+## Calcule des fréquences
+
+Exercice : Produisez une colonne supplémentaire contenant le nombre d'occurence de chaque mot. Trier les résultats.
+
+```{r}
+# Etape 4: calcul des fréquences 
+
+```
+
+## Visualisation d'un nuage de mots
+
+```{r}
+# Etape 5: Visualisation des mots à >600 occurences 
+# --- Graphe en barres 
+janeausten_freq %>% 
+  filter(n > 600) %>% 
+  # mutate(word = reorder(word, n)) %>% 
+  ggplot(aes(n, word)) + 
+  geom_col()
+```
+
+```{r}
+# --- Nuage de mots 
+janeausten_freq %>% 
+  with(wordcloud(word, n, max.words = 100)) 
+```
+
+## Filtrage par TF-IDF
+
+#### Calculons tout d'abord le term de fréquence (TF)
+
+Sur le corpus des romans de Jane Austen : cette fois, les mots vont être comptés par document, c'est à dire par livre. Le nombre total de mots par roman sera également relevé. Nous obtiendrons ainsi le premier indice **TF** ou **Term Frequency** en divisant ces deux quantités, i.e. la proportion d'apparition de chaque combinaison mot-roman. 
+
+```{r}
+book_words <- austen_books() %>% 
+  unnest_tokens(word, text) %>% 
+  count(book, word, sort = TRUE) 
+ 
+total_words <- book_words %>%  
+  group_by(book) %>%  
+  summarize(total = sum(n)) 
+ 
+book_words <- left_join(book_words, total_words) %>% 
+  mutate(tf=n/total) 
+ 
+book_words
+```
+
+### Visualisation d'un graphique par roman
+
+```{r}
+# --- Graphique par roman 
+ggplot(book_words, aes(n/total, fill = book)) + 
+  geom_histogram(show.legend = FALSE) + 
+  xlim(NA, 0.0009) + 
+  facet_wrap(~book, ncol = 2, scales = "free_y") +  
+  theme_light() 
+```
+
+Nous constatons graphiquement une distribution avec une très longue queue de distribution à droite : certains mots sont extrêmement fréquents, certains seront très rares. Ceci est typique de tout corpus de langage naturel. 
+
+### Calcul du term IDF
+
+```{r}
+book_tf_idf <- book_words %>% 
+  bind_tf_idf(word, book, n) 
+book_tf_idf
+```
+
+Les mots non informatifs (stop words) sont automatiquement filtrés : présents dans tous les documents, leur **idf** est nulle et donc leur **tf-idf** également. 
+
+Exercice : Trier le tableau par valeur de TF-IDF
+
+```{r}
+# Complete code here
+```
+
+Recalculons les graphiques
+
+```{r}
+# Graphique 
+book_tf_idf %>% 
+  group_by(book) %>% 
+  slice_max(tf_idf, n = 15) %>% 
+  ungroup() %>% 
+  ggplot(aes(tf_idf, fct_reorder(word, tf_idf), fill = book)) + 
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~book, ncol = 2, scales = "free") + 
+  labs(x = "tf-idf", y = NULL) 
+```
+
+Dans le cadre de romans comme ici, les noms propres correspondant aux personnages principaux particuliers à chaque roman sont effectivement attendus comme particulièrement discriminants. 
+
+## Mise en application sur un autre corpus documentaire
+
+Afin d'identifier ces mots discriminants dans un autre contexte, réalisons un second exemple sur des articles scientifiques en sciences physiques issus du Projet Gutenberg. 
+
+### Lecture des données
+
+```{r}
+# Lecture des données 
+physics <- gutenberg_download(c(37729, 14725, 13476, 30155),  
+                              meta_fields = "author", mirror="http://mirrors.xmission.com/gutenberg/")
+physics
+```
+
+### Préparation des données
+
+#### Tokenisation
+
+Exercice: Tokeniser ce corpus documentaire
+
+```{r}
+# physics_words <- 
+```
+
+#### Application du filtrage TF-IDF
+
+Exercice : Construire le tableau resultat trié par valeur de TF-IDF
+
+```{r}
+# physics_words <- 
+```
+
+#### Visualisation avec GGPLOT
+
+```{r}
+physics_words %>%
+  ggplot(aes(tf_idf, word, fill = author)) + 
+  geom_col(show.legend = FALSE) + 
+  labs(x = "tf-idf", y = NULL) + 
+  facet_wrap(~author, ncol = 2, scales = "free") 
+```
+
+Des termes surprenants apparaissent, comme ab, rc\... pour Huygens, correspondant à des noms d'angles, rayons, cercles\... k chez Einstein, la séparation de co et ordinate car séparés par un caractère de ponctuation\... un nettoyage complémentaire peut donc être nécessaire pour clarifier l'interprétation. 
+
+#### Suppression des stops words
+
+Exercice : Ajoutons manuellement de stop words et supprimons les.
+
+```{r}
+# tibble de stopwords complémentaires  
+# mystopwords <- 
+  
+# Suppression de ces mots 
+# physics_words <- 
+```
+
+#### Nouvelle visualisation avec GGPLOT
+
+```{r}
+physics_words %>% 
+  # --- Ajout du tf-idf et filtre/ordonnancement des données 
+  bind_tf_idf(word, author, n) %>% 
+  mutate(word = str_remove_all(word, "_")) %>% 
+  group_by(author) %>%  
+  slice_max(tf_idf, n = 15) %>% 
+  ungroup() %>% 
+  mutate(word = reorder_within(word, tf_idf, author)) %>% 
+  mutate(author = factor(author, levels = c("Galilei, Galileo", 
+                                            "Huygens, Christiaan", 
+                                            "Tesla, Nikola", 
+                                            "Einstein, Albert"))) %>% 
+  # --- Graphe 
+  ggplot(aes(word, tf_idf, fill = author)) + 
+  geom_col(show.legend = FALSE) + 
+  labs(x = NULL, y = "tf-idf") + 
+  facet_wrap(~author, ncol = 2, scales = "free") + 
+  coord_flip() + 
+  scale_x_reordered() 
+```
+
+L'usage des indicateurs **TF** et **TF-IDF** permet respectivement d'explorer l'usage de la langue dans un corpus donné et de trouver les mots caractéristiques de chaque document dans ce corpus. La mise au format TIDY des données en amont permet de conserver une logique d'exploration et d'analyse proche de celle des données "classiques". 
