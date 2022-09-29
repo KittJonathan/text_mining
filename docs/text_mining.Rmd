@@ -1,0 +1,24 @@
+---
+title: "Text mining"
+output: html_document
+date: "2022-09-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+*Généralités sur le text mining et vocabulaire*
+
+Le text mining (Fouille de textes) = champ de l'**apprentissage automatique** appartenant lui-même au domaine de l'**A.I.**
+
+Ensemble de méthodes, techniques et outils pour exploiter des textes écrits.
+
+Utilisations :
+- extraire des infos  
+- grouper des documents  
+- retrouver des documents appartenant à une thématique  
+- réaliser des synthèses automatiques du contenu de textes  
+- analyse de sentiments
