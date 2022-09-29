@@ -318,7 +318,7 @@ physics
 Exercice: Tokeniser ce corpus documentaire
 
 ```{r}
-physics_words <- physics |> 
+physics_words <- physics |>
   unnest_tokens(word, text)
 ```
 
@@ -356,7 +356,8 @@ Exercice : Ajoutons manuellement de stop words et supprimons les.
 ```{r}
 # tibble de stopwords complémentaires  
 mystopwords <- tibble(
-  word = c("_k_", "_k", "_x", "ab", "ac", "rc", "cm", "cg", "cb", "ak"))
+  word = c("_k_", "_k", "_x", "ab", "ac", "rc", "cm", "cg", "cb", "ak",
+           "bn", "ad", "fig", "file"))
   
 # Suppression de ces mots 
 physics_words <- physics_words |> 
@@ -374,10 +375,10 @@ physics_words %>%
   slice_max(tf_idf, n = 15) %>% 
   ungroup() %>% 
   mutate(word = reorder_within(word, tf_idf, author)) %>% 
-  mutate(author = factor(author, levels = c("Galilei, Galileo", 
-                                            "Huygens, Christiaan", 
-                                            "Tesla, Nikola", 
-                                            "Einstein, Albert"))) %>% 
+  mutate(author = factor(author, levels = c("Galilei, Galileo",
+                                            "Huygens, Christiaan",
+                                            "Tesla, Nikola",
+                                            "Einstein, Albert"))) %>%
   # --- Graphe 
   ggplot(aes(word, tf_idf, fill = author)) + 
   geom_col(show.legend = FALSE) + 
