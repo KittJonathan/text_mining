@@ -193,7 +193,7 @@ tidy_books <- tidy_books |>
 tidy_books
 ```
 
-## Calcule des fréquences
+## Calcul des fréquences
 
 Exercice : Produisez une colonne supplémentaire contenant le nombre d'occurence de chaque mot. Trier les résultats.
 
