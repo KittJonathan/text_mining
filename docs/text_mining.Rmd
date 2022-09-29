@@ -17,8 +17,36 @@ Le text mining (Fouille de textes) = champ de l'**apprentissage automatique** ap
 Ensemble de méthodes, techniques et outils pour exploiter des textes écrits.
 
 Utilisations :
+
 - extraire des infos  
 - grouper des documents  
 - retrouver des documents appartenant à une thématique  
 - réaliser des synthèses automatiques du contenu de textes  
 - analyse de sentiments
+
+Champ du machine learning -> approches ou algorithmes d'apprentissage mis en oeuvre peuvent être supervisés ou non supervisés.
+
+Les données textuelles sont généralement non structurées, il faut préparer les données pour travailler sur un tableau structuré.
+
+# Préparation des données
+
+Deux étapes majeures : 
+
+- produire une représentation (feature extraction)    
+- faire de la modélisation sur cette représentation  
+
+Corpus = collection de documents textuels qu'on souhaite analyser
+Document = unité de texte dont le contenu forme un "tout" (article scientifique)
+Individu statistique = mot ou ensemble de mots formant l'unité de sens sémantique
+Cet individu est appelé "token"
+
+Text -> tokenisation -> stemming (lemmatisation : réduire chaque mot à sa structure radicale, ex "particulier" et "particulière") -> stopword removal -> word list
+
+Format des données : 
+- format tidy  
+- chaque ligne correspond à un jeton ou token
+
+En text mining, plutôt un format matriciel "document-term"
+
+# Analyse descriptive
+
