@@ -274,7 +274,7 @@ res_jeu.test <- cbind.data.frame(doc=names(pred_test),
                         pred=pred_test, 
                         label=topic[docs_test]) 
  
-mat_conf <- table(res_jeu.test $pred, res_jeu.test $label)
+mat_conf <- table(res_jeu.test$pred, res_jeu.test$label)
 ```
 
 #### Calcul de l'accuracy
