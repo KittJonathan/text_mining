@@ -1,0 +1,243 @@
+---
+title: "Text_Mining_Trial"
+author: "Mylène_Delosière"
+date: "2022-09-30"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Librairies 
+library(tidytext) 
+library(tidyverse)
+# package de manipulation des chaînes de caractères du tidyverse 
+library(stringr)  
+# package graphique devenu la référence sous R 
+library(ggplot2)  
+# package populaire d'algorithmes de text mining 
+library(tm)  
+library(hunspell) # contient des fonctions de parsing, tokenization, lemmatisation... 
+library(janeaustenr) # 6 romans de Jane Austen 
+library(wordcloud) # pour les nuages de mots 
+
+library(forcats) # pour le graphe des tf-idf par valeur décroissante 
+
+library(gutenbergr) # accès à du contenu textuel 
+
+library(topicmodels) # modélisation de thématiq#ues
+library(caret)
+library(randomForest)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+# Convertir les fichiers PDF en texte
+
+#install.packages("pdftools")
+library(pdftools)
+
+setwd("C:/Users/eleve9/Desktop/TextMining")
+
+files <- list.files(pattern = "pdf$")
+files
+
+opinions <- lapply(files, pdf_text)
+length(opinions)
+
+```
+
+
+```{r}
+# Package de Text Mining
+
+#install.packages("tm")
+library(tm)
+
+# Générer le Corpus
+corp <- Corpus(URISource(files),
+               readerControl = list(reader = readPDF))
+
+# Générer le TermDocumentMatrix
+opinions.tdm <- TermDocumentMatrix(corp, 
+                                   control = 
+                                     list(removePunctuation = TRUE,
+                                          stopwords = TRUE,
+                                          tolower = TRUE,
+                                          stemming = TRUE,
+                                          removeNumbers = TRUE,
+                                          bounds = list(global = c(2, Inf)))) 
+
+opinions.tdm
+inspect(opinions.tdm[1:30,])
+
+```
+
+```{r}
+
+# # Remove punctuation from the corpus
+# corp <- tm_map(corp, removePunctuation, ucp = TRUE)
+# 
+# 
+# # Re-créer la TDM sans le terme Remove punctuation
+# opinions.tdm2 <- TermDocumentMatrix(corp, 
+#                                    control = 
+#                                      list(removePunctuation = FALSE,
+#                                           stopwords = TRUE,
+#                                           tolower = TRUE,
+#                                           stemming = TRUE,
+#                                           removeNumbers = TRUE,
+#                                           bounds = list(global = c(2, Inf)))) 
+# 
+# inspect(opinions.tdm2[1:30,])
+# 
+
+```
+```{r}
+
+## Find Freq Terms
+findFreqTerms(opinions.tdm, lowfreq = 30, highfreq = Inf)
+
+## See Freq Term in each Document
+ft <- findFreqTerms(opinions.tdm, lowfreq = 30, highfreq = Inf)
+as.matrix(opinions.tdm[ft,]) 
+
+
+```
+
+
+```{r}
+## Total counts of words
+
+ft.tdm <- as.matrix(opinions.tdm[ft,])
+sort(apply(ft.tdm, 1, sum), decreasing = TRUE)
+
+
+```
+
+
+
+
+
+
+# TEXT MINING SCRIPT FROM SeeNovate - LDA non supervised
+
+```{r}
+# Librairies 
+library(tidytext) 
+library(tidyverse)
+# package de manipulation des chaînes de caractères du tidyverse 
+library(stringr)  
+# package graphique devenu la référence sous R 
+library(ggplot2)  
+# package populaire d'algorithmes de text mining 
+library(tm)  
+library(hunspell) # contient des fonctions de parsing, tokenization, lemmatisation... 
+library(janeaustenr) # 6 romans de Jane Austen 
+library(wordcloud) # pour les nuages de mots 
+
+library(forcats) # pour le graphe des tf-idf par valeur décroissante 
+
+library(gutenbergr) # accès à du contenu textuel 
+
+library(topicmodels) # modélisation de thématiq#ues
+library(caret)
+library(randomForest)
+```
+
+
+```{r}
+# settings 
+opinions.tdm
+inspect(opinions.tdm[1:30,])
+ 
+ap_tidy <- tidytext::tidy(opinions.tdm)
+ap_tidy
+
+# convertir la col document en integer 
+ap_tidy <- ap_tidy %>% mutate(document=as.integer(factor(document))) 
+ap_tidy
+
+summary(ap_tidy)
+
+```
+
+```{r}
+
+# Compter les documents pour calculer le seuil
+ap_tidy %>% count(document) %>% nrow() -> doc_N
+seuil <- 0.5 # si le term apparait dans bcp de docs, il sera éliminé
+
+# Ajustement du modèle et filtrage
+ap_tidy <- ap_tidy %>%
+  bind_tf_idf(term, document, count) 
+ap_tidy
+
+ap_tidy <- ap_tidy %>%
+  dplyr::filter(idf>=seuil) 
+ap_tidy
+  
+opinions.tdm2 <- ap_tidy %>% 
+  cast_dtm(document = document, term = term, value = count)
+
+inspect(opinions.tdm2)
+
+ap_lda <- LDA(opinions.tdm2, k = 2, control = list(seed = 1234)) 
+ap_lda
+
+```
+
+
+```{r}
+# Obtention des probabilités "par mot et par thème", notées "beta" 
+ap_topics <- tidy(ap_lda, matrix = "beta") 
+tibble(head(ap_topics)) 
+
+``` 
+# Liste des 10 mots les plus communs par thème et barplots 
+
+```{r}
+
+ap_top_terms <- ap_topics %>% 
+  filter(str_length(term)>3) %>% 
+  group_by(topic) %>% 
+  top_n(10, beta) %>% 
+  ungroup() %>% 
+  arrange(topic, -beta) 
+ap_top_terms
+```
+
+
+```{r}
+ap_top_terms %>% 
+  mutate(term = reorder_within(term, beta, topic)) %>% 
+  ggplot(aes(beta, term, fill = factor(topic))) + 
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~ topic, scales = "free") + 
+  scale_y_reordered()
+
+```
+
+
+```{r}
+
+
+```
+
+ 
+ 
+
+```{r}
+
+
+```
+
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

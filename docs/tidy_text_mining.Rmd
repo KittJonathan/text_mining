@@ -14,6 +14,8 @@ Charger les packages
 
 ```{r, warning=FALSE, message=F}
 library(dplyr)
+library(janeaustenr)
+library(stringr)
 library(tidytext)
 ```
 
@@ -52,6 +54,43 @@ Nous allons séparer le texte en unités sémantiques (mots) et le transformer a
 
 ```{r}
 text_df |> 
+  unnest_tokens(word, text, to_lower = TRUE)
+```
+
+## Nettoyer les oeuvres de Jane Austen
+
+Dans un premier temps, nous ajoutons deux colonnes : 
+
+- numéro de ligne par livre  
+- numéro de chapitre
+
+```{r}
+original_books <- austen_books() %>%
+  group_by(book) %>%
+  mutate(linenumber = row_number(),
+         chapter = cumsum(str_detect(text, 
+                                     regex("^chapter [\\divxlc]",
+                                           ignore_case = TRUE)))) %>%
+  ungroup()
+
+original_books
+```
+
+Nous séparons ensuite la colonne "text" en unités sémantiques (mots). Il existe d'autres types de "tokens" (caractères, n-grammes, phrases, lignes, paragraphes, ou séparation par regex). 
+
+```{r}
+tidy_books <- original_books %>%
   unnest_tokens(word, text)
+
+tidy_books
+```
+
+Certains mots sont très fréquents ("the" en anglais), nous pouvons les supprimer : 
+
+```{r}
+data(stop_words)
+
+tidy_books <- tidy_books %>%
+  anti_join(stop_words)
 ```
 

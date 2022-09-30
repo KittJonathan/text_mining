@@ -365,6 +365,8 @@ display: none;
 mining</a></p>
 <p>Charger les packages</p>
 <pre class="r"><code>library(dplyr)
+library(janeaustenr)
+library(stringr)
 library(tidytext)</code></pre>
 <div id="the-tidy-text-format" class="section level1">
 <h1>The tidy text format</h1>
@@ -407,7 +409,7 @@ text_df</code></pre>
 <p>Nous allons séparer le texte en unités sémantiques (mots) et le
 transformer au format tidy :</p>
 <pre class="r"><code>text_df |&gt; 
-  unnest_tokens(word, text)</code></pre>
+  unnest_tokens(word, text, to_lower = TRUE)</code></pre>
 <pre><code>## # A tibble: 20 x 2
 ##     line word       
 ##    &lt;int&gt; &lt;chr&gt;      
@@ -431,6 +433,66 @@ transformer au format tidy :</p>
 ## 18     3 ourselves  
 ## 19     4 and        
 ## 20     4 immortality</code></pre>
+</div>
+<div id="nettoyer-les-oeuvres-de-jane-austen" class="section level2">
+<h2>Nettoyer les oeuvres de Jane Austen</h2>
+<p>Dans un premier temps, nous ajoutons deux colonnes :</p>
+<ul>
+<li>numéro de ligne par livre<br />
+</li>
+<li>numéro de chapitre</li>
+</ul>
+<pre class="r"><code>original_books &lt;- austen_books() %&gt;%
+  group_by(book) %&gt;%
+  mutate(linenumber = row_number(),
+         chapter = cumsum(str_detect(text, 
+                                     regex(&quot;^chapter [\\divxlc]&quot;,
+                                           ignore_case = TRUE)))) %&gt;%
+  ungroup()
+
+original_books</code></pre>
+<pre><code>## # A tibble: 73,422 x 4
+##    text                    book                linenumber chapter
+##    &lt;chr&gt;                   &lt;fct&gt;                    &lt;int&gt;   &lt;int&gt;
+##  1 &quot;SENSE AND SENSIBILITY&quot; Sense &amp; Sensibility          1       0
+##  2 &quot;&quot;                      Sense &amp; Sensibility          2       0
+##  3 &quot;by Jane Austen&quot;        Sense &amp; Sensibility          3       0
+##  4 &quot;&quot;                      Sense &amp; Sensibility          4       0
+##  5 &quot;(1811)&quot;                Sense &amp; Sensibility          5       0
+##  6 &quot;&quot;                      Sense &amp; Sensibility          6       0
+##  7 &quot;&quot;                      Sense &amp; Sensibility          7       0
+##  8 &quot;&quot;                      Sense &amp; Sensibility          8       0
+##  9 &quot;&quot;                      Sense &amp; Sensibility          9       0
+## 10 &quot;CHAPTER 1&quot;             Sense &amp; Sensibility         10       1
+## # ... with 73,412 more rows</code></pre>
+<p>Nous séparons ensuite la colonne “text” en unités sémantiques (mots).
+Il existe d’autres types de “tokens” (caractères, n-grammes, phrases,
+lignes, paragraphes, ou séparation par regex).</p>
+<pre class="r"><code>tidy_books &lt;- original_books %&gt;%
+  unnest_tokens(word, text)
+
+tidy_books</code></pre>
+<pre><code>## # A tibble: 725,055 x 4
+##    book                linenumber chapter word       
+##    &lt;fct&gt;                    &lt;int&gt;   &lt;int&gt; &lt;chr&gt;      
+##  1 Sense &amp; Sensibility          1       0 sense      
+##  2 Sense &amp; Sensibility          1       0 and        
+##  3 Sense &amp; Sensibility          1       0 sensibility
+##  4 Sense &amp; Sensibility          3       0 by         
+##  5 Sense &amp; Sensibility          3       0 jane       
+##  6 Sense &amp; Sensibility          3       0 austen     
+##  7 Sense &amp; Sensibility          5       0 1811       
+##  8 Sense &amp; Sensibility         10       1 chapter    
+##  9 Sense &amp; Sensibility         10       1 1          
+## 10 Sense &amp; Sensibility         13       1 the        
+## # ... with 725,045 more rows</code></pre>
+<p>Certains mots sont très fréquents (“the” en anglais), nous pouvons
+les supprimer :</p>
+<pre class="r"><code>data(stop_words)
+
+tidy_books &lt;- tidy_books %&gt;%
+  anti_join(stop_words)</code></pre>
+<pre><code>## Joining, by = &quot;word&quot;</code></pre>
 </div>
 </div>
 

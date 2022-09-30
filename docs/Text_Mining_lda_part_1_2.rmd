@@ -185,7 +185,6 @@ ap_documents %>%
 
 ```{r}
 ap_lda_32 <- LDA(AssociatedPress, k = 8, control = list(seed = 1234, alpha=.9)) 
-# alpha proche de 0 -> nb de thématiques par doc le plus faible possible
 ```
 
 ```{r}
