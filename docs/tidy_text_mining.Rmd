@@ -1,0 +1,57 @@
+---
+title: "Tidy Text mining"
+output: html_document
+date: "2022-09-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Notes personnelles du libre [Tidy Text mining](https://www.tidytextmining.com/index.html)
+
+Charger les packages 
+
+```{r, warning=FALSE, message=F}
+library(dplyr)
+library(tidytext)
+```
+
+
+# The tidy text format
+
+Format tidy en text mining : un "token" (unité de sens sémantique) par ligne.
+
+Dans un pipeline de text mining, le format tidy ne sera pas systématiquement conservé : on peut importer, filtrer et nettoyer les données à l'aide de dplyr et d'autres outils tidy, puis convertir les données en matrice document-terme pour des applications de machine learning. Les modèles obtenus peuvent être à nouveau transformés en format tidy pour l'interprétation et la représentation à l'aide de ggplot2.
+
+## La fonction `unnest_tokens()`
+
+Prenons un texte d'Emily Dickinson
+
+```{r}
+text <- c("Because I could not stop for Death -",
+          "He kindly stopped for me -",
+          "The Carriage held but just Ourselves -",
+          "and Immortality")
+
+text
+```
+
+Commençons par mettre ce texte dans un tableau :
+
+```{r}
+text_df <- tibble(
+  line = 1:4,
+  text = text
+)
+
+text_df
+```
+
+Nous allons séparer le texte en unités sémantiques (mots) et le transformer au format tidy : 
+
+```{r}
+text_df |> 
+  unnest_tokens(word, text)
+```
+
