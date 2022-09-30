@@ -1,3 +1,9 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
 # Analyse de sentiments
 
 ```{r}
@@ -96,7 +102,9 @@ Etendons ce type d'étude aux 6 romans, en utilisant un autre dictionnaire, Bing
 jane_austen_sentiment <- tidy_books %>% 
   inner_join(get_sentiments("bing")) %>% 
   count(book, index = linenumber %/% 80, sentiment) %>% 
-  spread(sentiment, n, fill = 0) %>% 
+  pivot_wider(id_cols = c(book, index), names_from = sentiment,
+              values_from = n) %>%   
+  # spread(sentiment, n, fill = 0) %>% 
   mutate(sentiment = positive - negative)
 ```
 
