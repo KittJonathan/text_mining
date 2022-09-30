@@ -1,3 +1,8 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
 # Apprentissage supervisé à partir de la LDA
 
 ```{r}
@@ -75,7 +80,7 @@ L'objectif de cette partie est de simuler des variables supervisées par les th�
 #### Séparation d'un jeu de données en Train/Test
 
 ```{r}
-test_prop <- 0.3 
+test_prop <- 0.3 # 30% des donnees dans un ensemble test
 docs_ID <- Docs(ap_tidy_stem_dtm) 
 # ID des documents qui seront conservés en jeu "test" 
 set.seed(742) # 2chantillonnage du jeu de test sera "répétable" 
@@ -122,7 +127,7 @@ which(ind_rows_0==F)
 Documents n'ayant plus de mots après le removeSparse (à effectuer en amont du découpage train/test?)
 
 ```{r}
-ap_dtm_train_filtreSparse <- ap_dtm_train_filtreSparse[-493,]
+ap_dtm_train_filtreSparse <- ap_dtm_train_filtreSparse[-493,]  # cf tableau avec which(ind_rows_0 = F)
 ind_rows_0 <- rowSums(as.matrix(ap_dtm_train_filtreSparse))!=0 
 table(ind_rows_0) 
 
@@ -134,6 +139,7 @@ which(ind_rows_0==F)
 ```{r}
 # Ajustement LDA 
 # --- sur données d'entrainement 
+# on utilise la LDA pour extraire les etiquettes (pour utiliser par la suite dans Random Forest)
 ap_lda_train <- LDA(ap_dtm_train_filtreSparse, k = 4, control = list(seed = 1234)) 
 # --- sur données complètes 
 # ap_lda_train <- LDA(ap_tidy_stem_dtm, k = 4, control = list(seed = 1234)) 
@@ -173,6 +179,7 @@ hist(ap_doc_maxGamma$max_gamma)
 ```{r}
 ap_doc_wide <- ap_documents %>% 
   pivot_wider(names_from = topic, values_from=gamma) 
+ap_doc_wide
  
 # Recherche de la colonne correspondant au gamma max => numéro du topic 
 id_topic <- function(xx, data=ap_doc_wide){ 
@@ -182,6 +189,7 @@ id_topic <- function(xx, data=ap_doc_wide){
  
 topic <- factor(sapply(ap_doc_wide$document, id_topic, data=ap_doc_wide))   
 topic.test <- factor(sapply(ap_doc_wide$document, id_topic, data=ap_doc_wide))
+topic.test
 ```
 
 ## Apprentissage du model suppervisé
