@@ -1,0 +1,208 @@
+# Analyse non supervisée de la thématique
+
+```{r}
+# Librairies 
+library(tidytext) 
+library(tidyverse)
+# package de manipulation des chaînes de caractères du tidyverse 
+library(stringr)  
+# package graphique devenu la référence sous R 
+library(ggplot2)  
+# package populaire d'algorithmes de text mining 
+library(tm)  
+library(hunspell) # contient des fonctions de parsing, tokenization, lemmatisation... 
+library(janeaustenr) # 6 romans de Jane Austen 
+library(wordcloud) # pour les nuages de mots 
+
+library(forcats) # pour le graphe des tf-idf par valeur décroissante 
+
+library(gutenbergr) # accès à du contenu textuel 
+
+library(topicmodels) # modélisation de thématiq#ues
+library(caret)
+library(randomForest)
+```
+
+Le modèle est créé par la fonction LDA() de **topicmodels**. L'argument k = 2 signifie qu'un modèle à 2 thèmes seulement est créé, mais ceci s'étend à un nombre plus important en pratique. Une graine de nombres aléatoires, via l'argument seed, est fournie pour permettre d'avoir des résultats répétables. 
+
+```{r}
+# Ajustement du modèle 
+data("AssociatedPress") 
+ap_lda <- LDA(AssociatedPress, k = 2, control = list(seed = 1234)) 
+ap_lda 
+```
+
+La mise au format tidy du modèle par la fonction tidy() de **tidytext** permet d'obtenir facilement les probabilités par thème que chacun des mots en soit issu, notées 𝛽, via l'argument matrix="beta". Celles-ci sont très basses pour de nombreux mots. La fonction top_n() de dplyr permet de trouver les 10 mots les plus communs à chaque thème et d'en faire le barplot via **ggplot2**. 
+
+```{r}
+# Obtention des probabilités "par mot et par thème", notées "beta" 
+ap_topics <- tidy(ap_lda, matrix = "beta") 
+tibble(head(ap_topics)) 
+```
+
+Liste des 10 mots les plus communs par thème et barplots 
+
+```{r}
+ap_top_terms <- ap_topics %>% 
+  filter(str_length(term)>3) %>% 
+  group_by(topic) %>% 
+  top_n(10, beta) %>% 
+  ungroup() %>% 
+  arrange(topic, -beta) 
+ap_top_terms
+```
+
+```{r}
+ap_top_terms %>% 
+  mutate(term = reorder_within(term, beta, topic)) %>% 
+  ggplot(aes(beta, term, fill = factor(topic))) + 
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~ topic, scales = "free") + 
+  scale_y_reordered()
+```
+
+## Interpretation des thèmes
+
+Le rapide parcours de ces deux listes de mots laissent à penser que le premier thème est en rapport avec le monde des affaires, le second en rapport avec la politique. Ce second thème doit d'ailleurs s'appuyer sur des données plutôt anciennes, mais probablement fortement représentées dans l'historique de la base, les relations USA-USSR étant un gros sujet politique durant des décennies.  
+
+**Remarque**: les mots "new" et "people" sont communs aux deux thèmes. Ils n'ont pas été plus ou moins arbitrairement affectés à l'un ou l'autre thème, comme l'aurait fait une classification "dure" (hard clustering de la CAH ou des K-means). Ceci constitue un **important avantage** de la méthode : des chevauchements sont possibles, en accord avec l'usage du langage naturel. 
+
+## Différences entre les thèmes
+
+Il est possible de rechercher les plus grandes différences en termes de 𝛽 entre les deux thèmes. Elles sont estimées sur la base du rapport des log des probabilités d'appartenir à l'un ou l'autre thème log(𝛽1 / 𝛽2), pratique car rendant les différences symétriques entre thèmes. 
+
+```{r}
+# Tableau 
+beta_spread <- ap_topics %>% 
+  mutate(topic = paste0("topic", topic)) %>% 
+  spread(topic, beta) %>% 
+  filter(topic1 > .001 | topic2 > .001) %>% 
+  mutate(log_ratio = log2(topic2 / topic1)) 
+ 
+knitr::kable(head(beta_spread, n=10)) 
+```
+
+### Graphe des 20 plus grosses différences
+
+```{r}
+plot_log.ratio <- beta_spread %>% 
+  top_n(20, abs(log_ratio)) %>% 
+  arrange(desc(log_ratio))  
+ 
+plot_log.ratio %>% 
+  ggplot(aes(log_ratio, term)) + 
+  geom_col(show.legend = F) + 
+  ylim(plot_log.ratio$term) + 
+  labs(x="Log ratio of beta in topic 2 / beta in topic 1")
+```
+
+Le thème 1 est plutôt caractérisé par des noms de monnaies et des termes financiers, comme "index", "prices" ou "rates". Le second thème présente parmi ses termes les plus communs les noms de partis américains ou de politiciens, russes ou américains. Ceci confirme que l'algorithme a identifié les thèmes financier et politique dans cette collection d'articles d'actualités. 
+
+## Proportion de chaque thème dans les documents
+
+Le modèle LDA représente également chaque document comme un mélange de thèmes. Nous obtenons des estimations des probabilités "par thème par document", notées 𝛾, via l'argument matrix="gamma". 
+
+```{r}
+ap_documents <- tidy(ap_lda, matrix = "gamma") %>% 
+  mutate(topic = paste0("topic", topic)) %>% 
+  spread(topic, gamma)
+tibble(ap_documents)
+
+# Récupération de la thématique la plus probable
+ap_documents_2 <- ap_documents %>% 
+  mutate(max=colnames(ap_documents %>% select(-document))[apply(ap_documents %>% select(-document),1,which.max)])
+tibble(ap_documents_2)
+```
+
+Chaque probabilité est une estimation de la proportion de mots du document issue de chacun des thèmes. D'après le tableau ci-dessus, le document 2 aurait un peu plus d'un tiers de ses termes issus du thème 1 "financier".
+
+**Remarque**: Par construction, ∑𝛾i=1 où i est l'un des topic identifié, quelque soit le nombre k fournit à la LDA. 
+
+Le document 6 a une proportion très faible de mots issus du thème 1, on peut penser qu'il est essentiellement lié au second thème "politique", quand le document 7 doit porter principalement sur la finance et les affaires. 
+
+### Regardons quelques exemples de documents
+
+```{r}
+validation <- tidy(AssociatedPress) %>% 
+  #filter(document == 6 | document==7) %>% 
+  group_by(document) %>% 
+  arrange(desc(count)) %>% 
+  ungroup() 
+ 
+knitr::kable(validation[validation$document == 6,][1:10,]) 
+```
+
+```{r}
+knitr::kable(validation[validation$document == 7,][1:10,]) 
+```
+
+```{r}
+knitr::kable(validation[validation$document == 1271,][1:10,]) 
+```
+
+```{r}
+knitr::kable(validation[validation$document == 2000,][1:10,]) 
+```
+
+## Exploration de l'impact de K sur la distribution Gamma
+
+**Exercice** : Completer le code ci dessous pour estimer le model de la LDA, récupérer les p(t=i\|d_j) (gamma), récupérer les p(w\|t) (betas), et lister les 15 mots les plus communs par thème et barplots .
+
+```{r}
+# Ajustement LDA 
+ap_lda <- LDA(AssociatedPress, k = 5, control = list(seed = 1234)) 
+ap_documents <- tidy(ap_lda, matrix = "gamma") 
+# str(ap_lda) 
+ 
+# Calcul des betas 
+ap_topics <- tidy(ap_lda, matrix = "beta") 
+ 
+# liste des 10 mots les plus communs par thème et barplots 
+ap_top_terms <- ap_topics %>% 
+  group_by(topic) %>% 
+  top_n(15, beta) %>% 
+  ungroup() %>% 
+  arrange(topic, -beta) 
+ 
+ap_top_terms %>% 
+  mutate(term = reorder_within(term, beta, topic)) %>% 
+  ggplot(aes(beta, term, fill = factor(topic))) + 
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~ topic, scales = "free") + 
+  scale_y_reordered() 
+```
+
+#### Visualisation des gammas pour quelques documents 
+
+```{r}
+ap_documents %>% 
+  dplyr::filter(document %in% c(6,7,368,31, 953, 2000, 1271)) %>% 
+  ggplot(aes(x=factor(document), y=gamma, group=document, fill=factor(topic)))+ 
+  geom_col(position = "fill")
+```
+
+## Représentation de données
+
+```{r}
+ap_lda_32 <- LDA(AssociatedPress, k = 8, control = list(seed = 1234, alpha=.9)) 
+```
+
+```{r}
+# On récupère uniqument le tableau des gammas sans la colonne "document"
+ap_documents_32 <- tidy(ap_lda_32, matrix = "gamma") %>% 
+  mutate(topic = paste0("topic", topic)) %>% 
+  spread(topic, gamma) %>% 
+  select(-document)
+tibble(ap_documents_32)
+```
+
+```{r}
+pca_res <- prcomp(ap_documents_32, scale=TRUE)
+summary(pca_res)
+
+pca_res$x %>% 
+  as.data.frame %>%
+  ggplot(aes(x=PC1,y=PC2)) + 
+  geom_point(aes(color=ap_documents_2$max),size=4) +
+  theme(legend.position="top")
+```

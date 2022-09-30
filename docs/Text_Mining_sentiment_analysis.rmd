@@ -1,0 +1,218 @@
+# Analyse de sentiments
+
+```{r}
+# Librairies 
+library(tidytext) 
+library(tidyverse)
+# package de manipulation des chaînes de caractères du tidyverse 
+library(stringr)  
+# package graphique devenu la référence sous R 
+library(ggplot2)  
+# package populaire d'algorithmes de text mining 
+library(tm)  
+library(hunspell) # contient des fonctions de parsing, tokenization, lemmatisation... 
+library(janeaustenr) # 6 romans de Jane Austen 
+library(wordcloud) # pour les nuages de mots 
+
+library(forcats) # pour le graphe des tf-idf par valeur décroissante 
+
+library(reshape2)
+```
+
+Ce champ de la fouille de texte vise à comprendre le contenu émotionnel et les opinions exprimés dans les documents analysés. L'approche permet d'identifier les séquences de texte « positives », « négatives » ou exprimant des émotions plus nuancées, comme la surprise.  
+
+Une approche possible, couramment utilisée mais pas unique, est de considérer le texte comme une combinaison de ses mots et son contenu émotionnel global comme la somme de ceux de ses jetons individuels (mots ou n-grams). 
+
+## Les dictionnaires de sentiments
+
+Comme évoqué précédemment, plusieurs méthodes et plusieurs dictionnaires existent pour évaluer l'opinion ou l'émotion portées par un texte. Ces dictionnaires affectent un score ou un qualificatif à chaque mot « informatif » de la langue.  
+
+3 dictionnaires principaux en anglais, obtenus par la fonction get_sentiments() de **tidytext**. Ils doivent être téléchargés lors de la première utilisation, ce qui nécessite d'installer le package **textdata**. 
+
+```{r}
+get_sentiments("afinn") 
+```
+
+```{r}
+get_sentiments("bing") 
+```
+
+```{r}
+get_sentiments("nrc") 
+```
+
+Les points de vigilance à avoir en tête : 
+
+-   Ces dictionnaires sont le fruit d'un travail manuel, validé par la communauté. Ce travail est essentiellement réalisé sur des avis ou message internet d'aujourd'hui, avec leurs spécificités. 
+
+-   L'approche sera ici basée sur des mots (unigrams), donc le sarcasme ou la négation, tels que dans no good ou not so wonderful ne seront pas pris en compte. 
+
+<!-- -->
+
+-   Enfin, la taille des sections de texte sur lesquelles se feront les aggrégations de sentiments de mots individuels, phrase, paragraphe, chapitre\... peut impacter le résultat. Plus la section est longue, plus le risque est grand de finir sur une moyenne proche de 0 ; alors que les trop petites peuvent manquer de mots pour estimer correctement l'émotion. 
+
+## Le sentiment à travers le corpus de texte
+
+L'illustration sera celle des romans de Jane Austen, bien que ces textes soient des fictions d'environ 200 ans, pas les plus en rapport avec les tweets d'aujourd'hui\... 
+
+Récupérons nos données comme dans les exercices précédents:
+
+```{r}
+# Données 
+tidy_books <- austen_books() %>% 
+  group_by(book) %>% 
+  mutate( 
+    linenumber = row_number(), 
+    chapter = cumsum(str_detect(text,  
+                                regex("^chapter [\\divxlc]",  
+                                      ignore_case = TRUE)))) %>% 
+  ungroup() %>% 
+  unnest_tokens(word, text) 
+tidy_books
+```
+
+L'utilisation du nom de colonne "word" pour contenir les jetons est pratique pour les jointures avec les dictionnaires, ayant eux-mêmes ce nom pour le vecteur de mots. 
+
+#### Mots "joyeux" les plus fréquents dans EMMA
+
+```{r}
+
+nrc_joy <- get_sentiments("nrc") %>%  
+  filter(sentiment == "joy") 
+ 
+tidy_books %>% 
+  filter(book == "Emma") %>% 
+  inner_join(nrc_joy) %>% 
+  count(word, sort = TRUE) 
+```
+
+De nombreux mots sont effectivement positifs, en lien avec l'amitié, l'amour, l'espoir. D'autres comme "found" ou "present" peuvent avoir plusieurs sens et certains ne sont pas spécialement joyeux. 
+
+Etendons ce type d'étude aux 6 romans, en utilisant un autre dictionnaire, Bing basé sur un score. L'unité d'aggrégation de score sera une suite de 80 lignes. Un index permettra de suivre la position de chaque section dans les livres. 
+
+#### Calcul du sentiment positif ou négatif par section
+
+```{r}
+jane_austen_sentiment <- tidy_books %>% 
+  inner_join(get_sentiments("bing")) %>% 
+  count(book, index = linenumber %/% 80, sentiment) %>% 
+  spread(sentiment, n, fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+```
+
+#### Visualisation par roman
+
+```{r}
+ggplot(jane_austen_sentiment, aes(index, sentiment, fill = book)) + 
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+
+#### Représentation des deux poles positif/négatif
+
+```{r}
+jane_austen_sentiment_long <- jane_austen_sentiment %>% 
+
+  pivot_longer(cols = negative:positive, 
+
+               names_to="polarite", 
+               values_to="score") 
+ggplot(jane_austen_sentiment_long, aes(index, score, fill = book)) + 
+
+  geom_col(show.legend = FALSE) + 
+
+  facet_wrap(~book+polarite, ncol = 2, scales = "free_x") 
+
+jane_austen_sentiment_long <- jane_austen_sentiment %>% 
+
+  pivot_longer(cols = negative:sentiment, 
+
+               names_to="polarite", 
+               values_to="score")  %>% 
+
+  mutate(score_sign=ifelse(polarite=="negative", -score, score))  
+
+ggplot(jane_austen_sentiment_long, aes(index, score_sign,  fill = polarite)) + 
+
+  geom_col(show.legend = T, position = "dodge") + 
+
+  facet_wrap(~book, ncol = 2, scales = "free_x") 
+```
+
+#### Représentation de la triple information (+, -, sentiment synthétique = différence des 2)
+
+```{r}
+ggplot(jane_austen_sentiment_long %>% dplyr::filter(book=="Northanger Abbey"), aes(index, score_sign,  fill = polarite)) + 
+
+  geom_col(show.legend = T, position = "dodge") + 
+
+  facet_wrap(~book, ncol = 2, scales = "free_x") 
+```
+
+```{r}
+# Barres empilées 
+
+ggplot(jane_austen_sentiment, aes(index, -negative)) + 
+
+  geom_col(show.legend = T, fill="red") + 
+
+  geom_col(aes(index, positive),  fill = "green") + 
+
+  geom_col(aes(index, sentiment), fill="blue") + 
+
+  facet_wrap(~book, ncol = 2, scales = "free_x") 
+```
+
+## Analyse des contributions au sentiment
+
+Ayant les mots des romans et le sentiment associé à disposition, nous pouvons rechercher les mots contribuant le plus au sens de l'émotion identifiée comme positive ou négative.
+
+#### Mots positifs ou négatifs les plus fréquents
+
+```{r}
+bing_word_counts <- tidy_books %>% 
+  inner_join(get_sentiments("bing")) %>% 
+  count(word, sentiment, sort = TRUE) %>% 
+  ungroup() 
+bing_word_counts
+```
+
+#### Visualisation graphique
+
+Les barplots classiques permettent de classer les mots les plus fréquents selon le sentiment positif ou négatif et se faire identifier ainsi les responsables principaux de l'émotion générale. 
+
+La fonction comparison.cloud() permet d'obtenir un wordcloud organisant les mots selon l'émotion portée, positive ou négative. Ceci demande un retour à un objet de classe matrix réalisé par la fonction acast() du package **reshape2**. 
+
+```{r}
+# Barplots 
+bing_word_counts %>% 
+  group_by(sentiment) %>% 
+  top_n(10) %>% 
+  ungroup() %>% 
+  mutate(word = reorder(word, n)) %>% 
+  ggplot(aes(n, word, fill = sentiment)) + 
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~sentiment, scales = "free_y") + 
+  labs(x = "Contribution to sentiment", 
+       y = NULL) 
+```
+
+#### Ajustement manuel des mots au sens mal identifié
+
+```{r}
+custom_stop_words <- bind_rows(tibble(word = c("miss"),   
+                                      lexicon = c("custom")),  
+                               stop_words)
+```
+
+#### Visualisation à l'aide d'un wordcloud
+
+```{r}
+  xx <- tidy_books %>% 
+  inner_join(get_sentiments("bing")) %>% 
+  anti_join(custom_stop_words) %>% 
+  count(word, sentiment, sort = TRUE) %>% 
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>% 
+  comparison.cloud(colors = c("red", "green"), 
+                   max.words = 100)
+```

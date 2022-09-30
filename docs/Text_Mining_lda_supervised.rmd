@@ -1,0 +1,280 @@
+# Apprentissage supervisé à partir de la LDA
+
+```{r}
+# Librairies 
+library(tidytext) 
+library(tidyverse)
+# package de manipulation des chaînes de caractères du tidyverse 
+library(stringr)  
+# package graphique devenu la référence sous R 
+library(ggplot2)  
+# package populaire d'algorithmes de text mining 
+library(tm)  
+library(hunspell) # contient des fonctions de parsing, tokenization, lemmatisation... 
+library(janeaustenr) # 6 romans de Jane Austen 
+library(wordcloud) # pour les nuages de mots 
+
+library(forcats) # pour le graphe des tf-idf par valeur décroissante 
+
+library(gutenbergr) # accès à du contenu textuel 
+
+library(topicmodels) # modélisation de thématiq#ues
+library(caret)
+library(randomForest)
+```
+
+```{r}
+# settings 
+set.seed(1234) 
+theme_set(theme_minimal()) 
+data("AssociatedPress") 
+ 
+ap_tidy <- tidytext::tidy(AssociatedPress)
+ap_tidy
+```
+
+## Préparation de données
+
+```{r}
+ap_tidy_stem <- ap_tidy %>% 
+  mutate(word=SnowballC::wordStem(term)) 
+ 
+# Valeur de l'IDF correspondant à des mots présents dans >=80% des documents 
+docs_N <- nDocs(AssociatedPress) #ap_tidy_stem_dtm 
+seuil <- log(docs_N/round(0.2*docs_N)) 
+
+# Filtre des mots sur la base du tf-idf, mais en revenant à une dtm pondérée en Term Freq pour permettre la LDA 
+ap_tidy_stem_idf <- ap_tidy_stem %>%   
+  bind_tf_idf(word, document, count) %>% 
+  dplyr::filter(idf>=seuil) 
+ 
+summary(ap_tidy_stem_idf$idf) 
+hist(ap_tidy_stem_idf$idf)
+```
+
+#### Reconstruction de la matrice document-term
+
+En effet nous l'avons perdu dans la phase précédente où nous avons changé la structure des données de départ.
+
+```{r}
+ap_tidy_stem_dtm <- ap_tidy_stem_idf %>% 
+  count(document, word) %>% 
+  cast_dtm(document = document, term = word, value = n) # Argument weighting pour pondérer les mots par tf-idf au lieu de tf (par défaut): weighting = tm::weightTfIdf)  
+ 
+# Comparaison des 2 matrices 
+AssociatedPress 
+ap_tidy_stem_dtm 
+
+
+```
+
+## Allocation des document a différents thèmes
+
+L'objectif de cette partie est de simuler des variables supervisées par les thèmes abstraits découverts précédement.
+
+#### Séparation d'un jeu de données en Train/Test
+
+```{r}
+test_prop <- 0.3 
+docs_ID <- Docs(ap_tidy_stem_dtm) 
+# ID des documents qui seront conservés en jeu "test" 
+set.seed(742) # 2chantillonnage du jeu de test sera "répétable" 
+docs_test <- sample(seq(1, docs_N), round(0.3*docs_N)) 
+ 
+# Test de sélection train/test sur la matrice DT directement  
+# (OK, mais si pondération tf-idf, elle considère aussi les données test par cette approche) 
+ap_dtm_train <- ap_tidy_stem_dtm[-docs_test,] 
+ap_dtm_train  
+
+ap_dtm_test <- ap_tidy_stem_dtm[docs_test,] 
+ap_dtm_test   
+```
+
+```{r}
+# Pour utiliser une pondération TF-IDF issue du jeu "train" uniquement: 
+# ap_stem.filterSparse_train <- tidytext::tidy(ap_tidy_stem_dtm) %>% 
+#   dplyr::select(-count) %>% 
+#   dplyr::filter(!(document %in% docs_test)) %>% 
+#   count(document, term) %>% 
+#   cast_dtm(document = document, term = term, value = n, weighting = tm::weightTfIdf) 
+ 
+# Pour le jeu test:  
+# - Extraire les pondérations issue de la matrice train - revenir au format tidy pour matrice test - affecter les les poids tfidf issus de matrice train aux mots de matrice test et retour au format dtm (document term matrix) 
+# ap_stem.filterSparse_test <- tidytext::tidy(ap_tidy_stem_dtm) %>% 
+# ... étape d'affectation des poids 
+```
+
+#### Filtrage complémentaire
+
+Nous allons ici supprimer les mots trop peu fréquents dans les documents.
+
+```{r}
+ap_dtm_train_filtreSparse <- removeSparseTerms(ap_dtm_train, sparse = .95) 
+ind_cols_0 <- colSums(as.matrix(ap_dtm_train_filtreSparse))!=0 
+table(ind_cols_0) 
+
+ind_rows_0 <- rowSums(as.matrix(ap_dtm_train_filtreSparse))!=0 
+table(ind_rows_0) 
+
+which(ind_rows_0==F) 
+```
+
+Documents n'ayant plus de mots après le removeSparse (à effectuer en amont du découpage train/test?)
+
+```{r}
+ap_dtm_train_filtreSparse <- ap_dtm_train_filtreSparse[-493,]
+ind_rows_0 <- rowSums(as.matrix(ap_dtm_train_filtreSparse))!=0 
+table(ind_rows_0) 
+
+which(ind_rows_0==F) 
+```
+
+#### Identification des thèmes par LDA
+
+```{r}
+# Ajustement LDA 
+# --- sur données d'entrainement 
+ap_lda_train <- LDA(ap_dtm_train_filtreSparse, k = 4, control = list(seed = 1234)) 
+# --- sur données complètes 
+# ap_lda_train <- LDA(ap_tidy_stem_dtm, k = 4, control = list(seed = 1234)) 
+ 
+# Calcul des gammas
+ap_documents <- tidy(ap_lda_train, matrix = "gamma") 
+
+# Calcul des betas 
+ap_topics <- tidy(ap_lda_train, matrix = "beta") 
+ 
+# liste des 25 mots les plus communs par thème et barplots 
+ap_top_terms <- ap_topics %>% 
+  group_by(topic) %>% 
+  top_n(25, beta) %>% 
+  ungroup() %>% 
+  arrange(topic, -beta) 
+ 
+ap_top_terms %>% 
+  mutate(term = reorder_within(term, beta, topic)) %>% 
+  ggplot(aes(beta, term, fill = factor(topic))) + 
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~ topic, scales = "free") + 
+  scale_y_reordered() 
+```
+
+#### Labelisation des documents par les thèmes
+
+```{r}
+# On regarde simplement l'histogramme des gammas maximum: les thématiques/clusters les plus probable pour chaque document et on trie
+ap_doc_maxGamma <- ap_documents %>% 
+  group_by(document) %>% 
+  summarise(max_gamma=max(gamma)) 
+ 
+hist(ap_doc_maxGamma$max_gamma) 
+```
+
+```{r}
+ap_doc_wide <- ap_documents %>% 
+  pivot_wider(names_from = topic, values_from=gamma) 
+ 
+# Recherche de la colonne correspondant au gamma max => numéro du topic 
+id_topic <- function(xx, data=ap_doc_wide){ 
+  vec_gamma <-ap_doc_wide[data$document==xx,-1] 
+  return(topic=which(vec_gamma==max(vec_gamma))) 
+} 
+ 
+topic <- factor(sapply(ap_doc_wide$document, id_topic, data=ap_doc_wide))   
+topic.test <- factor(sapply(ap_doc_wide$document, id_topic, data=ap_doc_wide))
+```
+
+## Apprentissage du model suppervisé
+
+Dans cette section nous apprenons un randomForest pour apprendre à reconnaitre les catégories abstraite à partir des documents.
+
+#### Procédure de cross-validation
+
+```{r}
+# K-folds CV 
+mtry <- c(10, 20)#, 50) 
+ntree <- c(300, 500) # 400 
+ 
+seed.ini=482 
+n.folds <- 3
+folds.cc <- createFolds(y=topic,k=n.folds,list=TRUE) 
+sapply(folds.cc,length) 
+
+res_RF <- vector(mode="list", length(ntree)*length(mtry)) 
+ 
+system.time( 
+  for (ii in 1:length(ntree)){ 
+    for (jj in 1:length(mtry)){ 
+      tab_perf <- NULL 
+      for (zz in 1:n.folds) { 
+        set.seed(seed.ini+zz+1) 
+        rf.train <- randomForest(x=as.matrix(ap_dtm_train_filtreSparse)[-folds.cc[[zz]],], y=topic[-folds.cc[[zz]]],  
+                                 mtry=mtry[jj],  
+                                 ntree=ntree[ii]) 
+        test.model = predict(rf.train, type = "resp", newdata = as.matrix(ap_dtm_train_filtreSparse)[folds.cc[[zz]],]) 
+        res <- cbind.data.frame(doc=names(test.model),  
+                         pred=test.model, 
+                         label=topic[folds.cc[[zz]]]) 
+        tab_perf <- rbind.data.frame(tab_perf, res) 
+      } 
+    res_RF[[(ii-1)*length(mtry)+jj]] <- tab_perf 
+    } 
+  }) 
+```
+
+#### Exploration des resultats
+
+```{r}
+# Exploration des résultats 
+head(res_RF[[1]]) 
+```
+
+#### Calcul de la precision de notre modèle
+
+```{r}
+# nom de l'élément=combinaison de ntree/mtry correspondante 
+names(res_RF) <- paste(rep(paste0("ntree.", ntree), each=length(mtry)), rep(paste0("mtry.", mtry), times=length(ntree))) 
+ 
+# Calcul des accuracy (indicateur de performance) par combinaison d'hyperparamètres mtry/ntree 
+sapply(res_RF, function(xx){ 
+  mat_conf <- table(xx$pred, xx$label) 
+  return(accuracy=round(sum(diag(mat_conf))/dim(xx)[1]*100,2)) 
+}) 
+
+# Valeurs optimales des hyperparamètres identifiées 
+mtry <- 10 
+ntree <- 500
+```
+
+#### Ré-entrainement sur les données d'apprentissage globales
+
+```{r}
+# Valeurs optimales des hyperparamètres identifiées 
+mtry <- 10 
+ntree <- 500 
+ 
+# Entrainement du modèle sur l'ensemble du jeu d'entrainement 
+system.time(model <- randomForest(x=as.matrix(ap_dtm_train_filtreSparse), y=topic, mtry=mtry, ntree=ntree, na.action = na.omit)) 
+
+# Exploration des résultats du modèle optimal 
+# --- Prédiction des données du jeu test 
+pred_test = predict(model, type = "resp", newdata = as.matrix(ap_dtm_test)) 
+ 
+# Attention ici, les labels du jeu de test ne sont pas directement accessibles, il faudrait pour cela recalculer les gamma de la LDA sur ces données test. 
+# UNe fois disponible, les commandes suivantes donneraient une estimation honnête de l'accuracy du modèle final 
+res_jeu.test <- cbind.data.frame(doc=names(pred_test),  
+                        pred=pred_test, 
+                        label=topic[docs_test]) 
+ 
+mat_conf <- table(res_jeu.test $pred, res_jeu.test $label)
+```
+
+#### Calcul de l'accuracy
+
+```{r}
+# Calcul des accuracy (indicateur de performance) par combinaison d'hyperparamètres mtry/ntree 
+sapply(pred_test, function(xx){ 
+  mat_conf <- table(xx$pred, xx$label) 
+  return(accuracy=round(sum(diag(mat_conf))/dim(xx)[1]*100,2)) 
+})
+```
