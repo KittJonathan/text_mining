@@ -1,3 +1,5 @@
+# Jane Austen ----
+
 tidy_books <- austen_books() %>% 
   group_by(book) %>% 
   mutate( 
@@ -29,3 +31,16 @@ ggplot(chapter_scores) +
   scale_fill_gradient(low = "black", high = "cyan2") +
   labs(y = "") +
   theme_minimal()
+
+# pdftools ----
+
+pdf.file <- "docs/file.pdf"
+
+pdf.text <- pdftools::pdf_text(pdf.file)
+cat(pdf.text[[2]]) 
+
+as_tibble(pdf.text) |> 
+  unnest_tokens(word, value) |> 
+  anti_join(stop_words) |> 
+  count(word, sort = T) |> 
+  tail()
